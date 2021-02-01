@@ -123,7 +123,7 @@ public class ErrorConverters {
   }
 
   /**
-   * The {@link } converts string objects which have failed processing into
+   * The {@link FailedStringToTableRowFn} converts string objects which have failed processing into
    * {@link TableRow} objects which can be output to a dead-letter table.
    */
   public static class FailedStringToTableRowFn
