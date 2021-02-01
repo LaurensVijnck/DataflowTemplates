@@ -22,7 +22,10 @@ import com.google.auto.value.AutoValue;
 import com.google.cloud.teleport.v2.values.FailsafeElement;
 import com.google.common.collect.ImmutableMap;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
+
+import com.google.common.collect.Lists;
 import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.coders.CoderException;
 import org.apache.beam.sdk.coders.KvCoder;
@@ -60,6 +63,26 @@ public class ErrorConverters {
 
   // PubsubMessage attribute map only allows a value to be <= 512 characters long.
   private static final int MAX_ATTRIBUTE_VALUE_LENGTH = 512;
+
+  /**
+   * Converts a {@link PubsubMessage} attribute map into {@link TableRow} records which can be saved
+   * to BigQuery. Each entry within the attribute map is converted into a row object containing two
+   * columns: "key" & "value". This allows for the attribute map to be saved to BigQuery without
+   * needing to handle schema changes due to new attributes.
+   *
+   * @param attributeMap A key-value map of attributes from a {@link PubsubMessage}
+   * @return A list of {@link TableRow} objects, one for each map entry.
+   */
+  private static List<TableRow> attributeMapToTableRows(Map<String, String> attributeMap) {
+    final List<TableRow> attributeTableRows = Lists.newArrayList();
+    if (attributeMap != null) {
+      attributeMap.forEach(
+              (key, value) ->
+                      attributeTableRows.add(new TableRow().set("key", key).set("value", value)));
+    }
+
+    return attributeTableRows;
+  }
 
   /** Writes strings error messages. */
   @AutoValue
@@ -100,7 +123,7 @@ public class ErrorConverters {
   }
 
   /**
-   * The {@link FailedStringToTableRowFn} converts string objects which have failed processing into
+   * The {@link } converts string objects which have failed processing into
    * {@link TableRow} objects which can be output to a dead-letter table.
    */
   public static class FailedStringToTableRowFn
@@ -331,13 +354,13 @@ public class ErrorConverters {
       String timestamp =
           TIMESTAMP_FORMATTER.print(context.timestamp().toDateTime(DateTimeZone.UTC));
 
-
       // Build the table row
       TableRow failedRow =
           new TableRow()
               .set("timestamp", timestamp)
               .set("errorMessage", failsafeElement.getErrorMessage())
               .set("stacktrace", failsafeElement.getStacktrace())
+              .set("attributes", attributeMapToTableRows(pubsubMessage.getAttributeMap()))
               .set("payloadString", message)
               .set("payloadBytes", message.getBytes(StandardCharsets.UTF_8));
 
