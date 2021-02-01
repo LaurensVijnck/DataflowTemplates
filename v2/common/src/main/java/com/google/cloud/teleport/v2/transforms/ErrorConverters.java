@@ -21,6 +21,7 @@ import com.google.api.services.bigquery.model.TableRow;
 import com.google.auto.value.AutoValue;
 import com.google.cloud.teleport.v2.values.FailsafeElement;
 import com.google.common.collect.ImmutableMap;
+
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
@@ -56,7 +57,9 @@ import org.joda.time.DateTimeZone;
 import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 
-/** Transforms & DoFns & Options for Teleport Error logging. */
+/**
+ * Transforms & DoFns & Options for Teleport Error logging.
+ */
 public class ErrorConverters {
 
   private static final String DEFAULT_TRUNCATION_INDICATOR = "...";
@@ -84,10 +87,12 @@ public class ErrorConverters {
     return attributeTableRows;
   }
 
-  /** Writes strings error messages. */
+  /**
+   * Writes strings error messages.
+   */
   @AutoValue
   public abstract static class WriteStringMessageErrors
-      extends PTransform<PCollection<FailsafeElement<String, String>>, WriteResult> {
+          extends PTransform<PCollection<FailsafeElement<String, String>>, WriteResult> {
 
     public static Builder newBuilder() {
       return new AutoValue_ErrorConverters_WriteStringMessageErrors.Builder();
@@ -101,17 +106,19 @@ public class ErrorConverters {
     public WriteResult expand(PCollection<FailsafeElement<String, String>> failedRecords) {
 
       return failedRecords
-          .apply("FailedRecordToTableRow", ParDo.of(new FailedStringToTableRowFn()))
-          .apply(
-              "WriteFailedRecordsToBigQuery",
-              BigQueryIO.writeTableRows()
-                  .to(getErrorRecordsTable())
-                  .withJsonSchema(getErrorRecordsTableSchema())
-                  .withCreateDisposition(CreateDisposition.CREATE_IF_NEEDED)
-                  .withWriteDisposition(WriteDisposition.WRITE_APPEND));
+              .apply("FailedRecordToTableRow", ParDo.of(new FailedStringToTableRowFn()))
+              .apply(
+                      "WriteFailedRecordsToBigQuery",
+                      BigQueryIO.writeTableRows()
+                              .to(getErrorRecordsTable())
+                              .withJsonSchema(getErrorRecordsTableSchema())
+                              .withCreateDisposition(CreateDisposition.CREATE_IF_NEEDED)
+                              .withWriteDisposition(WriteDisposition.WRITE_APPEND));
     }
 
-    /** Builder for {@link WriteStringMessageErrors}. */
+    /**
+     * Builder for {@link WriteStringMessageErrors}.
+     */
     @AutoValue.Builder
     public abstract static class Builder {
       public abstract Builder setErrorRecordsTable(String errorRecordsTable);
@@ -127,14 +134,14 @@ public class ErrorConverters {
    * {@link TableRow} objects which can be output to a dead-letter table.
    */
   public static class FailedStringToTableRowFn
-      extends DoFn<FailsafeElement<String, String>, TableRow> {
+          extends DoFn<FailsafeElement<String, String>, TableRow> {
 
     /**
      * The formatter used to convert timestamps into a BigQuery compatible <a
      * href="https://cloud.google.com/bigquery/docs/reference/standard-sql/data-types#timestamp-type">format</a>.
      */
     private static final DateTimeFormatter TIMESTAMP_FORMATTER =
-        DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss.SSSSSS");
+            DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss.SSSSSS");
 
     @ProcessElement
     public void processElement(ProcessContext context) {
@@ -143,27 +150,29 @@ public class ErrorConverters {
 
       // Format the timestamp for insertion
       String timestamp =
-          TIMESTAMP_FORMATTER.print(context.timestamp().toDateTime(DateTimeZone.UTC));
+              TIMESTAMP_FORMATTER.print(context.timestamp().toDateTime(DateTimeZone.UTC));
 
       // Build the table row
       final TableRow failedRow =
-          new TableRow()
-              .set("timestamp", timestamp)
-              .set("errorMessage", failsafeElement.getErrorMessage())
-              .set("stacktrace", failsafeElement.getStacktrace());
+              new TableRow()
+                      .set("timestamp", timestamp)
+                      .set("errorMessage", failsafeElement.getErrorMessage())
+                      .set("stacktrace", failsafeElement.getStacktrace());
 
       // Only set the payload if it's populated on the message.
       if (message != null) {
         failedRow
-            .set("payloadString", message)
-            .set("payloadBytes", message.getBytes(StandardCharsets.UTF_8));
+                .set("payloadString", message)
+                .set("payloadBytes", message.getBytes(StandardCharsets.UTF_8));
       }
 
       context.output(failedRow);
     }
   }
 
-  /** Writes all Errors to GCS, place at the end of your pipeline. */
+  /**
+   * Writes all Errors to GCS, place at the end of your pipeline.
+   */
   @AutoValue
   public abstract static class LogErrors extends PTransform<PCollectionTuple, PDone> {
     public static Builder newBuilder() {
@@ -177,11 +186,13 @@ public class ErrorConverters {
     @Override
     public PDone expand(PCollectionTuple pCollectionTuple) {
       return pCollectionTuple
-          .get(errorTag())
-          .apply(TextIO.write().to(errorWritePath()).withNumShards(1));
+              .get(errorTag())
+              .apply(TextIO.write().to(errorWritePath()).withNumShards(1));
     }
 
-    /** Builder for {@link LogErrors}. */
+    /**
+     * Builder for {@link LogErrors}.
+     */
     @AutoValue.Builder
     public abstract static class Builder {
       public abstract Builder setErrorWritePath(String errorWritePath);
@@ -200,7 +211,7 @@ public class ErrorConverters {
    */
   @AutoValue
   public abstract static class WriteKafkaMessageErrors
-      extends PTransform<PCollection<FailsafeElement<KV<String, String>, String>>, WriteResult> {
+          extends PTransform<PCollection<FailsafeElement<KV<String, String>, String>>, WriteResult> {
 
     public static Builder newBuilder() {
       return new AutoValue_ErrorConverters_WriteKafkaMessageErrors.Builder();
@@ -212,20 +223,22 @@ public class ErrorConverters {
 
     @Override
     public WriteResult expand(
-        PCollection<FailsafeElement<KV<String, String>, String>> failedRecords) {
+            PCollection<FailsafeElement<KV<String, String>, String>> failedRecords) {
 
       return failedRecords
-          .apply("FailedRecordToTableRow", ParDo.of(new FailedMessageToTableRowFn()))
-          .apply(
-              "WriteFailedRecordsToBigQuery",
-              BigQueryIO.writeTableRows()
-                  .to(getErrorRecordsTable())
-                  .withJsonSchema(getErrorRecordsTableSchema())
-                  .withCreateDisposition(CreateDisposition.CREATE_IF_NEEDED)
-                  .withWriteDisposition(WriteDisposition.WRITE_APPEND));
+              .apply("FailedRecordToTableRow", ParDo.of(new FailedMessageToTableRowFn()))
+              .apply(
+                      "WriteFailedRecordsToBigQuery",
+                      BigQueryIO.writeTableRows()
+                              .to(getErrorRecordsTable())
+                              .withJsonSchema(getErrorRecordsTableSchema())
+                              .withCreateDisposition(CreateDisposition.CREATE_IF_NEEDED)
+                              .withWriteDisposition(WriteDisposition.WRITE_APPEND));
     }
 
-    /** Builder for {@link WriteKafkaMessageErrors}. */
+    /**
+     * Builder for {@link WriteKafkaMessageErrors}.
+     */
     @AutoValue.Builder
     public abstract static class Builder {
       public abstract Builder setErrorRecordsTable(String errorRecordsTable);
@@ -244,7 +257,7 @@ public class ErrorConverters {
    */
   @AutoValue
   public abstract static class WritePubsubMessageErrors
-      extends PTransform<PCollection<FailsafeElement<PubsubMessage, String>>, WriteResult> {
+          extends PTransform<PCollection<FailsafeElement<PubsubMessage, String>>, WriteResult> {
 
     public static Builder newBuilder() {
       return new AutoValue_ErrorConverters_WritePubsubMessageErrors.Builder();
@@ -256,20 +269,22 @@ public class ErrorConverters {
 
     @Override
     public WriteResult expand(
-        PCollection<FailsafeElement<PubsubMessage, String>> failedRecords) {
+            PCollection<FailsafeElement<PubsubMessage, String>> failedRecords) {
 
       return failedRecords
-          .apply("FailedRecordToTableRow", ParDo.of(new FailedPubsubMessageToTableRowFn()))
-          .apply(
-              "WriteFailedRecordsToBigQuery",
-              BigQueryIO.writeTableRows()
-                  .to(getErrorRecordsTable())
-                  .withJsonSchema(getErrorRecordsTableSchema())
-                  .withCreateDisposition(CreateDisposition.CREATE_IF_NEEDED)
-                  .withWriteDisposition(WriteDisposition.WRITE_APPEND));
+              .apply("FailedRecordToTableRow", ParDo.of(new FailedPubsubMessageToTableRowFn()))
+              .apply(
+                      "WriteFailedRecordsToBigQuery",
+                      BigQueryIO.writeTableRows()
+                              .to(getErrorRecordsTable())
+                              .withJsonSchema(getErrorRecordsTableSchema())
+                              .withCreateDisposition(CreateDisposition.CREATE_IF_NEEDED)
+                              .withWriteDisposition(WriteDisposition.WRITE_APPEND));
     }
 
-    /** Builder for {@link WritePubsubMessageErrors}. */
+    /**
+     * Builder for {@link WritePubsubMessageErrors}.
+     */
     @AutoValue.Builder
     public abstract static class Builder {
       public abstract Builder setErrorRecordsTable(String errorRecordsTable);
@@ -285,14 +300,14 @@ public class ErrorConverters {
    * {@link TableRow} objects which can be output to a dead-letter table.
    */
   public static class FailedMessageToTableRowFn
-      extends DoFn<FailsafeElement<KV<String, String>, String>, TableRow> {
+          extends DoFn<FailsafeElement<KV<String, String>, String>, TableRow> {
 
     /**
      * The formatter used to convert timestamps into a BigQuery compatible <a
      * href="https://cloud.google.com/bigquery/docs/reference/standard-sql/data-types#timestamp-type">format</a>.
      */
     private static final DateTimeFormatter TIMESTAMP_FORMATTER =
-        DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss.SSSSSS");
+            DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss.SSSSSS");
 
     @ProcessElement
     public void processElement(ProcessContext context) {
@@ -301,27 +316,27 @@ public class ErrorConverters {
 
       // Format the timestamp for insertion
       String timestamp =
-          TIMESTAMP_FORMATTER.print(context.timestamp().toDateTime(DateTimeZone.UTC));
+              TIMESTAMP_FORMATTER.print(context.timestamp().toDateTime(DateTimeZone.UTC));
 
       String payloadString =
-          "key: "
-              + (message.getKey() == null ? "" : message.getKey())
-              + "value: "
-              + (message.getValue() == null ? "" : message.getValue());
+              "key: "
+                      + (message.getKey() == null ? "" : message.getKey())
+                      + "value: "
+                      + (message.getValue() == null ? "" : message.getValue());
 
       byte[] payloadBytes =
-          (message.getValue() == null
-              ? "".getBytes(StandardCharsets.UTF_8)
-              : message.getValue().getBytes(StandardCharsets.UTF_8));
+              (message.getValue() == null
+                      ? "".getBytes(StandardCharsets.UTF_8)
+                      : message.getValue().getBytes(StandardCharsets.UTF_8));
 
       // Build the table row
       TableRow failedRow =
-          new TableRow()
-              .set("timestamp", timestamp)
-              .set("errorMessage", failsafeElement.getErrorMessage())
-              .set("stacktrace", failsafeElement.getStacktrace())
-              .set("payloadString", payloadString)
-              .set("payloadBytes", payloadBytes);
+              new TableRow()
+                      .set("timestamp", timestamp)
+                      .set("errorMessage", failsafeElement.getErrorMessage())
+                      .set("stacktrace", failsafeElement.getStacktrace())
+                      .set("payloadString", payloadString)
+                      .set("payloadBytes", payloadBytes);
 
       context.output(failedRow);
     }
@@ -332,37 +347,37 @@ public class ErrorConverters {
    * {@link TableRow} objects which can be output to a dead-letter table.
    */
   public static class FailedPubsubMessageToTableRowFn
-      extends DoFn<FailsafeElement<PubsubMessage, String>, TableRow> {
+          extends DoFn<FailsafeElement<PubsubMessage, String>, TableRow> {
 
     /**
      * The formatter used to convert timestamps into a BigQuery compatible <a
      * href="https://cloud.google.com/bigquery/docs/reference/standard-sql/data-types#timestamp-type">format</a>.
      */
     private static final DateTimeFormatter TIMESTAMP_FORMATTER =
-        DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss.SSSSSS");
+            DateTimeFormat.forPattern("yyyy-MM-dd HH:mm:ss.SSSSSS");
 
     @ProcessElement
     public void processElement(ProcessContext context) {
       FailsafeElement<PubsubMessage, String> failsafeElement = context.element();
       PubsubMessage pubsubMessage = failsafeElement.getOriginalPayload();
       String message =
-          pubsubMessage.getPayload().length > 0
-              ? new String(pubsubMessage.getPayload())
-              : pubsubMessage.getAttributeMap().toString();
+              pubsubMessage.getPayload().length > 0
+                      ? new String(pubsubMessage.getPayload())
+                      : pubsubMessage.getAttributeMap().toString();
 
       // Format the timestamp for insertion
       String timestamp =
-          TIMESTAMP_FORMATTER.print(context.timestamp().toDateTime(DateTimeZone.UTC));
+              TIMESTAMP_FORMATTER.print(context.timestamp().toDateTime(DateTimeZone.UTC));
 
       // Build the table row
       TableRow failedRow =
-          new TableRow()
-              .set("timestamp", timestamp)
-              .set("errorMessage", failsafeElement.getErrorMessage())
-              .set("stacktrace", failsafeElement.getStacktrace())
-              .set("attributes", attributeMapToTableRows(pubsubMessage.getAttributeMap()))
-              .set("payloadString", message)
-              .set("payloadBytes", message.getBytes(StandardCharsets.UTF_8));
+              new TableRow()
+                      .set("timestamp", timestamp)
+                      .set("errorMessage", failsafeElement.getErrorMessage())
+                      .set("stacktrace", failsafeElement.getStacktrace())
+                      .set("attributes", attributeMapToTableRows(pubsubMessage.getAttributeMap()))
+                      .set("payloadString", message)
+                      .set("payloadBytes", message.getBytes(StandardCharsets.UTF_8));
 
       context.output(failedRow);
     }
@@ -380,7 +395,7 @@ public class ErrorConverters {
    */
   @AutoValue
   public abstract static class BigQueryInsertErrorToPubsubMessage<T> extends
-      PTransform<PCollection<BigQueryInsertError>, PCollection<PubsubMessage>> {
+          PTransform<PCollection<BigQueryInsertError>, PCollection<PubsubMessage>> {
 
     /**
      * Provides a builder for {@link BigQueryInsertErrorToPubsubMessage}.
@@ -401,29 +416,30 @@ public class ErrorConverters {
     public PCollection<PubsubMessage> expand(PCollection<BigQueryInsertError> errors) {
 
       TypeDescriptor<PubsubMessage> messageTypeDescriptor
-          = new TypeDescriptor<PubsubMessage>() {};
+              = new TypeDescriptor<PubsubMessage>() {
+      };
 
       TypeDescriptor<String> stringTypeDescriptor = TypeDescriptors.strings();
 
       return
-          errors
-              .apply(
-                  "ConvertErrorPayload",
-                  MapElements.into(
-                      TypeDescriptors.kvs(
-                          payloadCoder().getEncodedTypeDescriptor(),
-                          TypeDescriptors.maps(stringTypeDescriptor, stringTypeDescriptor)))
-                      .via(new BigQueryInsertErrorToKv()))
-              .setCoder(
-                  KvCoder.of(
-                      payloadCoder(),
-                      MapCoder.of(StringUtf8Coder.of(), StringUtf8Coder.of())))
+              errors
+                      .apply(
+                              "ConvertErrorPayload",
+                              MapElements.into(
+                                      TypeDescriptors.kvs(
+                                              payloadCoder().getEncodedTypeDescriptor(),
+                                              TypeDescriptors.maps(stringTypeDescriptor, stringTypeDescriptor)))
+                                      .via(new BigQueryInsertErrorToKv()))
+                      .setCoder(
+                              KvCoder.of(
+                                      payloadCoder(),
+                                      MapCoder.of(StringUtf8Coder.of(), StringUtf8Coder.of())))
 
-              .apply(
-                  "ConvertToPubsubMessage",
-                  MapElements
-                      .into(messageTypeDescriptor)
-                      .via(new KvToPubsubMessage()));
+                      .apply(
+                              "ConvertToPubsubMessage",
+                              MapElements
+                                      .into(messageTypeDescriptor)
+                                      .via(new KvToPubsubMessage()));
     }
 
     /**
@@ -452,7 +468,7 @@ public class ErrorConverters {
        * @param translateFunction function used for the translation
        */
       public abstract Builder<T> setTranslateFunction(
-          SerializableFunction<TableRow, T> translateFunction);
+              SerializableFunction<TableRow, T> translateFunction);
 
       abstract BigQueryInsertErrorToPubsubMessage<T> autoBuild();
 
@@ -494,10 +510,10 @@ public class ErrorConverters {
       if (error.getError() != null) {
         // PubsubMessage attributes Map limits the size of the attribute values.
         String errorString =
-            Ascii.truncate(
-                error.getError().toString(),
-                MAX_ATTRIBUTE_VALUE_LENGTH,
-                DEFAULT_TRUNCATION_INDICATOR);
+                Ascii.truncate(
+                        error.getError().toString(),
+                        MAX_ATTRIBUTE_VALUE_LENGTH,
+                        DEFAULT_TRUNCATION_INDICATOR);
 
         builder.put(ERROR_KEY, errorString);
       }
@@ -508,7 +524,7 @@ public class ErrorConverters {
      * A {@link SerializableFunction} to convert a {@link BigQueryInsertError} to a {@link KV}.
      */
     private class BigQueryInsertErrorToKv implements
-        SerializableFunction<BigQueryInsertError, KV<T, Map<String, String>>> {
+            SerializableFunction<BigQueryInsertError, KV<T, Map<String, String>>> {
 
       @Override
       public KV<T, Map<String, String>> apply(BigQueryInsertError error) {
@@ -520,7 +536,7 @@ public class ErrorConverters {
      * A {@link SerializableFunction} to convert a {@link KV} to a {@link PubsubMessage}.
      */
     private class KvToPubsubMessage implements
-        SerializableFunction<KV<T, Map<String, String>>, PubsubMessage> {
+            SerializableFunction<KV<T, Map<String, String>>, PubsubMessage> {
 
       @Override
       public PubsubMessage apply(KV<T, Map<String, String>> kv) {
